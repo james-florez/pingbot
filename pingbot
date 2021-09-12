@@ -1,0 +1,838 @@
+#include <Servo.h>
+#include <Pixy2.h>
+#include <Stepper.h>
+//#include <RH_ASK.h>
+#include <SPI.h>
+
+
+///////////// global constant variables /////////////
+const int indexStepsPerRev = 48;
+const int suck = 180;
+const int blow = 180;
+const int lev = 1;
+const int throtDelay = 75;
+
+///////////pin naming ////////////////////////////////////
+// mobility motor pins
+const int enA = 3;
+const int in1 = 44;
+const int in2 = 45;
+const int enB = 11;
+const int in3 = 46;
+const int in4 = 47;
+const int enC = 10;
+const int enD = 9;
+const int in5 = 39;
+const int in6 = 38;
+const int in7 = 36;
+const int in8 = 37;
+
+// fan pins
+const byte pin = 41;
+
+// storage pins
+const byte pinA = 30;
+const byte pinB = 28;
+const byte pinC = 29;
+
+// index motor pins
+const byte pin1i = 44;
+const byte pin2i = 45;
+const byte pin3i = 46;
+const byte pin4i = 47;
+
+// IR sensor pins
+const int ledPinBottom = 13;
+const int sensorPinBottom = 26;
+const int ledPinTop = 13;
+const int sensorPinTop = 24;
+
+// Ultrasonic sensor pins
+const int trigPinLeft = 35;
+const int echoPinLeft = 33;
+const int trigPinRight = 22;
+const int echoPinRight = 23;
+
+
+////////////////CLASSES/////////////////////////////////////////
+
+class Storage
+{
+    // private variables
+    int tubes[10];
+    int currentTube;
+    int revs = 6400 / 10;
+    int delayAmounts = 2000;
+    byte PUL_storage;
+    byte DIR_storage;
+    byte ENA_storage;
+
+  public:
+    Storage(byte pinA, byte pinB, byte pinC)
+      : PUL_storage(pinA), DIR_storage(pinB), ENA_storage(pinC), currentTube(0)
+    {
+    }
+    void setup()
+    {
+      pinMode (PUL_storage, OUTPUT);
+      pinMode (DIR_storage, OUTPUT);
+      pinMode (ENA_storage, OUTPUT);
+    }
+    void rotate(bool forward = true) // rotates by 1 tube
+    {
+      if (forward)
+      {
+        for (int i = 0; i < revs; i++) //Forward 1 tube
+        {
+          digitalWrite(DIR_storage, LOW);
+          digitalWrite(ENA_storage, HIGH);
+          digitalWrite(PUL_storage, HIGH);
+          delayMicroseconds(delayAmounts);
+          digitalWrite(PUL_storage, LOW);
+          delayMicroseconds(delayAmounts);
+        }
+      }
+      else
+      {
+        for (int i = 0; i < revs; i++) //Backward 1 tube
+        {
+          digitalWrite(DIR_storage, HIGH);
+          digitalWrite(ENA_storage, HIGH);
+          digitalWrite(PUL_storage, HIGH);
+          delayMicroseconds(delayAmounts);
+          digitalWrite(PUL_storage, LOW);
+          delayMicroseconds(delayAmounts);
+        }
+      }
+
+    }
+    void coverHole()
+    {
+      int cover = revs / 2;
+      for (int i = 0; i < cover; i++) //Forward 1/2 tube
+      {
+        digitalWrite(DIR_storage, LOW);
+        digitalWrite(ENA_storage, HIGH);
+        digitalWrite(PUL_storage, HIGH);
+        delayMicroseconds(delayAmounts);
+        digitalWrite(PUL_storage, LOW);
+        delayMicroseconds(delayAmounts);
+      }
+    }
+    void uncoverHole()
+    {
+      int cover = revs / 2;
+      for (int i = 0; i < cover; i++) //Backward 1 tube
+      {
+        digitalWrite(DIR_storage, HIGH);
+        digitalWrite(ENA_storage, HIGH);
+        digitalWrite(PUL_storage, HIGH);
+        delayMicroseconds(delayAmounts);
+        digitalWrite(PUL_storage, LOW);
+        delayMicroseconds(delayAmounts);
+      }
+
+    }
+    void addBall()
+    {
+      tubes[currentTube]++;
+      if (tubes[currentTube] >= 4)
+      {
+        rotate(true); // goes to an empty tube
+        currentTube++;
+      }
+    }
+    void subBall()
+    {
+      tubes[currentTube]--;
+      if (tubes[currentTube] <= 0)
+      {
+        rotate(false); // goes to a full tube
+        currentTube++;
+      }
+    }
+};
+
+class Break
+{
+    int ledPin;
+    int sensorPin;
+    int sensorState;
+    int lastState;
+
+  public:
+    Break(int led, int sensor)
+    {
+      ledPin = led;
+      sensorPin = sensor;
+      sensorState = 0;
+      lastState = 0;
+    }
+
+    void setup()
+    {
+      pinMode(ledPin, OUTPUT);
+      pinMode(sensorPin, INPUT);
+      digitalWrite(sensorPin, HIGH);
+    }
+
+    bool scan()
+    {
+      bool broken = false;
+
+      // read the state of the pushbutton value:
+      sensorState = digitalRead(sensorPin);
+
+      // check if the sensor beam is broken
+      // if it is, the sensorState is LOW:
+      if (sensorState == LOW) // turn LED on
+        digitalWrite(ledPin, HIGH);
+      else // turn LED off
+        digitalWrite(ledPin, LOW);
+
+      if (sensorState && !lastState)
+      {
+        Serial.println("Unbroken");
+        broken = false;
+      }
+
+      if (!sensorState && lastState)
+      {
+        Serial.println("Broken");
+        broken = true;
+      }
+      lastState = sensorState;
+      return broken;
+    }
+};
+
+class Ultrasonic
+{
+    int trigPin;
+    int echoPin;
+
+  public:
+    Ultrasonic(int trig, int echo)
+    {
+      trigPin = trig;
+      echoPin = echo;
+    }
+
+    void setup()
+    {
+      pinMode(trigPin, OUTPUT);
+      pinMode(echoPin, INPUT);
+    }
+
+    int getTrig()
+    {
+      return trigPin;
+    }
+
+    int getEcho()
+    {
+      return echoPin;
+    }
+
+    void scan()
+    {
+      digitalWrite(trigPin, LOW);
+      delayMicroseconds(2);
+      digitalWrite(trigPin, HIGH);
+      delayMicroseconds(10);
+      digitalWrite(trigPin, LOW);
+
+      const unsigned long duration = pulseIn(echoPin, HIGH);
+      int distance = duration / 29 / 2;
+      if (duration == 0)
+      {
+        Serial.println("Warning: no pulse from sensor");
+      }
+      else
+      {
+        Serial.print("distance to nearest object:");
+        Serial.println(distance);
+        Serial.println(" cm");
+      }
+      delay(100);
+    }
+
+    int getDistance()
+    {
+      digitalWrite(trigPin, LOW);
+      delayMicroseconds(2);
+      digitalWrite(trigPin, HIGH);
+      delayMicroseconds(10);
+      digitalWrite(trigPin, LOW);
+
+      const unsigned long duration = pulseIn(echoPin, HIGH);
+      int distance = duration / 29 / 2;
+
+      return distance;
+    }
+
+};
+
+class Fan
+{
+  private:
+    // private variables
+    const int minPulseRate = 1000;
+    const int maxPulseRate = 2000;
+    int escPin;
+    int maxThrustSuck;
+    int maxThrustBlow;
+    int levTime;
+    int currentThrottle;
+    Servo esc;
+    Stepper indexStepper;
+    Storage myStorage;
+    // 2 ir sensors
+    Break b1;
+    Break b2;
+
+
+    // private functions
+    void changeThrottle(int throttle, int throttleDelay = 1)
+    {
+      currentThrottle = readThrottle();
+      int step = 1;
+      if (throttle < currentThrottle)
+      {
+        step = -1;
+      }
+      while (currentThrottle != throttle)
+      {
+        esc.write(currentThrottle + step);
+        currentThrottle = readThrottle();
+        Serial.println(currentThrottle);
+        delay(throttleDelay);
+      }
+    }
+
+    int readThrottle()
+    {
+      int throttle = esc.read();
+      return throttle;
+    }
+
+  public:
+    Fan(byte pin, int suck, int blow, int lev, byte pinA, byte pinB, byte pinC, byte pin1i, byte pin2i, byte pin3i, byte pin4i)
+      : myStorage(pinA, pinB, pinC), indexStepper(indexStepsPerRev, pin1i, pin2i, pin3i, pin4i), b1(ledPinBottom, sensorPinBottom), b2(ledPinTop, sensorPinTop)
+    {
+      if (suck > 180)
+        suck = 180;
+      if (suck < 0)
+        suck = 0;
+
+      if (blow > 180)
+        blow = 180;
+      if (blow < 0)
+        blow = 0;
+
+      escPin = pin;
+      maxThrustSuck = suck;
+      maxThrustBlow = blow;
+      levTime = lev;
+      currentThrottle = 0;
+    }
+
+    void setup()
+    {
+      // Attach the the servo to the correct pin and set the pulse range
+      esc.attach(escPin, minPulseRate, maxPulseRate);
+      // Write a minimum value (most ESCs require this correct startup)
+      esc.write(0);
+      indexStepper.setSpeed(60);//sets the speed at 60 rpm
+      myStorage.setup(); // sets up the storage object
+      b1.setup();
+      b2.setup();
+    }
+
+    void suck()
+    {
+      myStorage.coverHole();
+      changeThrottle(maxThrustSuck);
+      bool done = false;
+      do
+      {
+        done = b1.scan(); // use IR sensors to determine if a ball has been picked up
+      } while (done == false); // ISSUE: will loop infinitely if no ball is picked up
+      changeThrottle(0);
+      myStorage.uncoverHole();
+      myStorage.addBall();
+    }
+
+    void blow()
+    {
+      bool result = false;
+      do
+      {
+        result = index();
+      }
+      while (result == false);
+      myStorage.coverHole();
+      changeThrottle(maxThrustBlow, throtDelay);
+      delay(levTime * 1000);
+      changeThrottle(0);
+      myStorage.uncoverHole();
+    }
+
+    bool index() {
+      int delayAmount = 6000;
+      while (b2.scan() == false)
+      {
+        Serial.println("clockwise");//prints message in Serial monitor
+        indexStepper.step(-11);//steps 11 steps clockwise
+        delay(delayAmount);//sets delay for 3000 ms /3 seconds/
+        if (b2.scan() == true)
+        {
+          break;
+        }
+        indexStepper.step(-26);//steps 26 steps clockwise
+        delay(delayAmount);//sets delay for 3000 ms /3 second/
+        if (b2.scan() == true)
+        {
+          break;
+        }
+        indexStepper.step(-11);//steps 11 steps clockwise
+        delay(delayAmount);
+      }
+      return true;
+    }
+};
+
+class Pingbot
+{
+    // private objects
+    Fan myFan;
+    Pixy2 camera;
+    // signal reciever
+    // 2 ultrasonic sensors
+    Ultrasonic uLeft;
+    Ultrasonic uRight;
+
+
+    // private functions
+    void rotate_right() {
+      analogWrite(enA, 255);
+      digitalWrite(in1, HIGH);
+      digitalWrite(in2, LOW);
+      analogWrite(enB, 255);
+      digitalWrite(in3, LOW);
+      digitalWrite(in4, HIGH);
+      analogWrite(enC, 255);
+      digitalWrite(in5, LOW);
+      digitalWrite(in6, HIGH);
+      analogWrite(enD, 255);
+      digitalWrite(in7, HIGH);
+      digitalWrite(in8, LOW);
+
+    }
+    void rotate_left() {
+      analogWrite(enA, 255);
+      digitalWrite(in1, LOW);
+      digitalWrite(in2, HIGH);
+      analogWrite(enB, 255);
+      digitalWrite(in3, HIGH);
+      digitalWrite(in4, LOW);
+      analogWrite(enC, 255);
+      digitalWrite(in5, HIGH);
+      digitalWrite(in6, LOW);
+      analogWrite(enD, 255);
+      digitalWrite(in7, LOW);
+      digitalWrite(in8, HIGH);
+
+    }
+    void right () {
+      analogWrite(enA, 255);
+      digitalWrite(in1, LOW);
+      digitalWrite(in2, HIGH);
+      analogWrite(enB, 255);
+      digitalWrite(in3, HIGH);
+      digitalWrite(in4, LOW);
+      analogWrite(enC, 255);
+      digitalWrite(in5, LOW);
+      digitalWrite(in6, HIGH);
+      analogWrite(enD, 255);
+      digitalWrite(in7, HIGH);
+      digitalWrite(in8, LOW);
+
+    }
+    void left() {
+      analogWrite(enA, 255);
+      analogWrite(enB, 255);
+      analogWrite(enC, 255);
+      analogWrite(enD, 255);
+      digitalWrite(in1, HIGH);
+      digitalWrite(in2, LOW);
+      digitalWrite(in3, LOW);
+      digitalWrite(in4, HIGH);
+      digitalWrite(in5, HIGH);
+      digitalWrite(in6, LOW);
+      digitalWrite(in7, LOW);
+      digitalWrite(in8, HIGH);
+
+    }
+    void forward() {
+      analogWrite(enA, 255);
+      analogWrite(enB, 255);
+      analogWrite(enC, 255);
+      analogWrite(enD, 255);
+      digitalWrite(in1, HIGH);
+      digitalWrite(in2, LOW);
+      digitalWrite(in3, HIGH);
+      digitalWrite(in4, LOW);
+      digitalWrite(in5, HIGH);
+      digitalWrite(in6, LOW);
+      digitalWrite(in7, HIGH);
+      digitalWrite(in8, LOW);
+
+    }
+    void backward () {
+      analogWrite(enA, 255);
+      analogWrite(enB, 255);
+      analogWrite(enC, 255);
+      analogWrite(enD, 255);
+      digitalWrite(in1, LOW);
+      digitalWrite(in2, HIGH);
+      digitalWrite(in3, LOW);
+      digitalWrite(in4, HIGH);
+      digitalWrite(in5, LOW);
+      digitalWrite(in6, HIGH);
+      digitalWrite(in7, LOW);
+      digitalWrite(in8, HIGH);
+
+    }
+    void backward_diagonal_right() {
+      analogWrite(enA, 255);
+      digitalWrite(in1, LOW);
+      digitalWrite(in2, LOW);
+      analogWrite(enB, 255);
+      digitalWrite(in3, LOW);
+      digitalWrite(in4, HIGH);
+      analogWrite(enC, 255);
+      digitalWrite(in5, LOW);
+      digitalWrite(in6, LOW);
+      analogWrite(enD, 255);
+      digitalWrite(in7, LOW);
+      digitalWrite(in8, HIGH);
+
+    }
+    void backward_diagonal_left() {
+      analogWrite(enA, 255);
+      digitalWrite(in1, LOW);
+      digitalWrite(in2, HIGH);
+      analogWrite(enB, 255);
+      digitalWrite(in3, LOW);
+      digitalWrite(in4, LOW);
+      analogWrite(enC, 255);
+      digitalWrite(in5, LOW);
+      digitalWrite(in6, HIGH);
+      analogWrite(enD, 255);
+      digitalWrite(in7, LOW);
+      digitalWrite(in8, LOW);
+
+    }
+    void forward_diagonal_left() {
+      analogWrite(enA, 255);
+      digitalWrite(in1, LOW);
+      digitalWrite(in2, LOW);
+      analogWrite(enB, 255);
+      digitalWrite(in3, HIGH);
+      digitalWrite(in4, LOW);
+      analogWrite(enC, 255);
+      digitalWrite(in5, LOW);
+      digitalWrite(in6, LOW);
+      analogWrite(enD, 255);
+      digitalWrite(in7, HIGH);
+      digitalWrite(in8, LOW);
+    }
+    void forward_diagonal_right() {
+      analogWrite(enA, 255);
+      digitalWrite(in1, HIGH);
+      digitalWrite(in2, LOW);
+      analogWrite(enB, 255);
+      digitalWrite(in3, LOW);
+      digitalWrite(in4, LOW);
+      analogWrite(enC, 255);
+      digitalWrite(in5, HIGH);
+      digitalWrite(in6, LOW);
+      analogWrite(enD, 255);
+      digitalWrite(in7, LOW);
+      digitalWrite(in8, LOW);
+    }
+    void off () {
+      //analogWrite(enB, 0);
+      digitalWrite(in1, LOW);
+      digitalWrite(in2, LOW);
+      digitalWrite(in3, LOW);
+      digitalWrite(in4, LOW);
+      digitalWrite(in5, LOW);
+      digitalWrite(in6, LOW);
+      digitalWrite(in7, LOW);
+      digitalWrite(in8, LOW);
+    }
+
+  public:
+    Pingbot(byte pin, int suck, int blow, int lev, byte pinA, byte pinB, byte pinC, byte pin1i, byte pin2i, byte pin3i, byte pin4i)
+      : myFan(pin, suck, blow, lev,  pinA, pinB, pinC, pin1i, pin2i, pin3i, pin4i), uLeft(trigPinLeft, echoPinLeft), uRight(trigPinRight, echoPinRight)
+    {
+    }
+    void setup()
+    {
+      pinMode(enA, OUTPUT);
+      pinMode(in1, OUTPUT);
+      pinMode(in2, OUTPUT);
+      pinMode(enB, OUTPUT);
+      pinMode(in3, OUTPUT);
+      pinMode(in4, OUTPUT);
+      pinMode(in5, OUTPUT);
+      pinMode(in6, OUTPUT);
+      pinMode(in7, OUTPUT);
+      pinMode(in8, OUTPUT);
+      pinMode(enC, OUTPUT);
+      pinMode(enD, OUTPUT);
+
+      myFan.setup();
+      camera.init();
+      camera.changeProg("color_connected_components");
+      // signal reciever setup
+      // ultrasonic sensors setup
+      // mobility setup
+      pinMode(enA, OUTPUT);
+      pinMode(in1, OUTPUT);
+      pinMode(in2, OUTPUT);
+      pinMode(enB, OUTPUT);
+      pinMode(in3, OUTPUT);
+      pinMode(in4, OUTPUT);
+      pinMode(in5, OUTPUT);
+      pinMode(in6, OUTPUT);
+      pinMode(in7, OUTPUT);
+      pinMode(in8, OUTPUT);
+      pinMode(enC, OUTPUT);
+      pinMode(enD, OUTPUT);
+
+    }
+    bool search()
+    {
+      // Find a ball to go towards and orient pingbot so it is facing that ball
+      Serial.println("begin search");
+      while (!seeObj(1)) // spin until balls are visible
+      {
+        Serial.println("rotating to find a ball");
+        rotate_right(); // spin clockwise
+      }
+      off();  // stop rotating
+      int biggest = compareBalls(); // determine the biggest (closest) ball
+      Serial.println("balls compared");
+      while (centerBall(biggest) && aboveBottom(biggest) )  // while ball is above the bottom of the screen and centered horizontally
+      {
+        Serial.println("forward");
+        forward(); //move forward
+        delay(1000);
+        off();
+      }
+      forward(); // move forward more to run over the ball
+      delay(1000);
+      off();
+      myFan.suck(); // suck up the ball
+      return true;
+    }
+    int compareBalls()  // determines which ball is the largest and returns its ID number
+    {
+      int numSeen = camera.ccc.getBlocks();     // number of objects seen
+      int maxA = -1;
+      int closestBall = -1;
+      int area[numSeen];         // create area array
+
+      for (int obj = 0; obj < numSeen; obj++)   // go through each object seen
+      {
+        if (camera.ccc.blocks[obj].m_signature == 1)  // if it’s a purple ball
+        {
+          int width = camera.ccc.blocks[obj].m_width; // store width
+          int height = camera.ccc.blocks[obj].m_height; // store height
+          area[obj] = width * height; // store area
+          if (area[obj] >> maxA)       // if area is largest
+          {
+            maxA = area[obj];      // store new max area value
+            closestBall = obj;      // store ID of closest ball
+          }
+        }
+        //     Serial.println("our index ");
+        //   Serial.println(obj);
+        // Serial.println(" pixy index ");
+        // Serial.println(camera.ccc.blocks[obj].m_index);
+      }
+      return closestBall;         // return ID of closest ball
+
+    }
+    bool centerBall(int closestBall)  // rotates pingBot until the desired ball is centered horizontally in view, returns true if it works
+    {
+      camera.ccc.getBlocks();
+      int xBall = camera.ccc.blocks[closestBall].m_x;      // store x coord of ball center
+      // camera range is 0 to 316, we want ball between 148-168
+      Serial.println("begin centerBall()");
+      Serial.println(xBall);
+      while (camera.ccc.blocks[closestBall].m_x < 143 && camera.ccc.blocks[closestBall].m_x > 0 )       // while ball is on the left side
+      {
+        camera.ccc.getBlocks();
+        rotate_left();
+        Serial.println("rotating left");
+        delay(50);
+        off();
+        Serial.println("off");
+        Serial.println(camera.ccc.blocks[closestBall].m_x);
+      }
+
+      while (camera.ccc.blocks[closestBall].m_x > 173 && camera.ccc.blocks[closestBall].m_x < 317)        // while ball is on the right side
+      {
+        camera.ccc.getBlocks();
+        rotate_right();
+        Serial.println("rotating right");
+        delay(50);
+        off();
+        Serial.println("off");
+        Serial.println(camera.ccc.blocks[closestBall].m_x);
+      }
+      Serial.println("done");
+      return true;
+    }
+
+    bool aboveBottom(int closestBall)
+    {
+      Serial.println(camera.ccc.blocks[closestBall].m_y);
+      // camera range is 0 to 208, we want ball above 200
+      if (camera.ccc.blocks[closestBall].m_y < 195)
+      {
+        Serial.println("true");
+        return true;   // returns true if ball is at the top
+      }
+      else
+      {
+        return false;
+      }
+    }
+
+    bool returnHome(int player)
+    {
+      int home = 0;
+      ////// differentiate home colors of each player ////////
+      if (player == 1)
+      {
+        home = 2;
+      }
+
+      if (player == 2)
+      {
+        home = 3;
+      }
+
+      ////// get a home in the frame ///////
+      while (!seeObj(home))     // spin until home are visible
+      {
+        rotate_right();       // spin clockwise
+      }
+      off();          // stop rotating
+
+      int numSeen = camera.ccc.getBlocks();   // number of objects seen
+      for (int obj = 0; obj < numSeen; obj++)   // go through each obj seen
+      {
+        /////// find the desired home object ///////
+        if (camera.ccc.blocks[obj].m_signature == home)   // correct home color
+        {
+          obj = home;
+          int xHome = camera.ccc.blocks[home].m_x;   // x center of home
+          int  yHome = camera.ccc.blocks[home].m_y;   // y center of home
+          ///////// center the home ///////
+          while (xHome << 148)        // while home on left
+          {
+            int time = millis();
+            while ((millis() - time) >> 2000)   // rotate right for 2 s
+            {
+              rotate_left();
+            }
+            off();
+          }
+
+          while (xHome >> 168)        // while home on right
+          {
+            int time = millis();
+            while ((millis() - time) >> 2000)   // rotate for left 2 s
+            {
+              rotate_right();
+            }
+            off();
+          }
+
+          ///////// move towards the home ///////
+          /// origin is top left of screen, so yHome = 180 indicates home is far?
+          while (yHome << 180)
+          {
+            int  time = millis();
+            while ((millis() - time) >> 2000)   // move forward 2 s
+            {
+              forward();
+            }
+            off();
+          }
+        }
+      }
+
+      return true;
+    }
+    bool seeObj(int color) // returns true only if an orange ball is visible
+    {
+      int obj = camera.ccc.getBlocks();   // determine how many objects are detected
+      for ( int i = 0; i < obj; i++)
+      {
+        if (camera.ccc.blocks[i].m_signature == color)  // orange is the 1st signature color
+        {
+          return true;  // a ball/home is found, return true
+        }
+      }
+      return false;   // no ball/home is found, return false
+    }
+    bool dispense()
+    {
+      myFan.blow();
+    }
+};
+
+
+
+/////////////////////////////// MAIN PROGRAM ///////////////////////////////////////////////
+
+
+Pingbot pingy(pin, suck, blow, lev, pinA, pinB, pinC, pin1i, pin2i, pin3i, pin4i);
+
+
+void setup()
+{
+  Serial.begin(115200);
+  pingy.setup();
+
+}
+
+void loop()
+{
+  int command = 0;
+  // command recieved from controller. Command variable is set to 1,2, or 3
+
+
+  switch (command)
+  {
+    // 1. Retrieve balls
+    case 1: pingy.search();
+      break;
+    // 2. Dispense a ball
+    case 2: pingy.dispense();
+      break;
+    // 3. Return to home 1
+    case 3: pingy.returnHome(1);
+    // 4. Return to home 2
+    case 4: pingy.returnHome(2);
+      break;
+  }
+
+}
