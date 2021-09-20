@@ -1,4 +1,4 @@
-# pingbot
+# PINGBOT
 UCLA Mechanical Engineering Senior Capstone Project
 
 
