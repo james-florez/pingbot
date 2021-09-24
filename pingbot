@@ -1,23 +1,22 @@
 #include <Servo.h>
 #include <Pixy2.h>
 #include <Stepper.h>
-//#include <RH_ASK.h>
+#include <RH_ASK.h>
 #include <SPI.h>
-
 
 ///////////// global constant variables /////////////
 const int indexStepsPerRev = 48;
 const int suck = 180;
-const int blow = 180;
-const int lev = 1;
-const int throtDelay = 75;
+const int blow = 100;
+const int lev = 5;
+const int throtDelay = 150;
 
 ///////////pin naming ////////////////////////////////////
 // mobility motor pins
 const int enA = 3;
 const int in1 = 44;
 const int in2 = 45;
-const int enB = 11;
+const int enB = 12;
 const int in3 = 46;
 const int in4 = 47;
 const int enC = 10;
@@ -36,10 +35,10 @@ const byte pinB = 28;
 const byte pinC = 29;
 
 // index motor pins
-const byte pin1i = 44;
-const byte pin2i = 45;
-const byte pin3i = 46;
-const byte pin4i = 47;
+const byte pin1i = 8;
+const byte pin2i = 7;
+const byte pin3i = 6;
+const byte pin4i = 5;
 
 // IR sensor pins
 const int ledPinBottom = 13;
@@ -287,10 +286,10 @@ class Fan
     Servo esc;
     Stepper indexStepper;
     Storage myStorage;
+    
     // 2 ir sensors
     Break b1;
     Break b2;
-
 
     // private functions
     void changeThrottle(int throttle, int throttleDelay = 1)
@@ -343,7 +342,7 @@ class Fan
       esc.attach(escPin, minPulseRate, maxPulseRate);
       // Write a minimum value (most ESCs require this correct startup)
       esc.write(0);
-      indexStepper.setSpeed(60);//sets the speed at 60 rpm
+      indexStepper.setSpeed(60); //sets the speed at 60 rpm
       myStorage.setup(); // sets up the storage object
       b1.setup();
       b2.setup();
@@ -357,7 +356,7 @@ class Fan
       do
       {
         done = b1.scan(); // use IR sensors to determine if a ball has been picked up
-      } while (done == false); // ISSUE: will loop infinitely if no ball is picked up
+      } while (done == false);
       changeThrottle(0);
       myStorage.uncoverHole();
       myStorage.addBall();
@@ -369,8 +368,7 @@ class Fan
       do
       {
         result = index();
-      }
-      while (result == false);
+      } while (result == false);
       myStorage.coverHole();
       changeThrottle(maxThrustBlow, throtDelay);
       delay(levTime * 1000);
@@ -379,23 +377,15 @@ class Fan
     }
 
     bool index() {
-      int delayAmount = 6000;
+      int delayAmount = 2000;
       while (b2.scan() == false)
       {
         Serial.println("clockwise");//prints message in Serial monitor
-        indexStepper.step(-11);//steps 11 steps clockwise
-        delay(delayAmount);//sets delay for 3000 ms /3 seconds/
-        if (b2.scan() == true)
-        {
-          break;
-        }
-        indexStepper.step(-26);//steps 26 steps clockwise
-        delay(delayAmount);//sets delay for 3000 ms /3 second/
-        if (b2.scan() == true)
-        {
-          break;
-        }
-        indexStepper.step(-11);//steps 11 steps clockwise
+        indexStepper.step(11);//steps 11 steps clockwise
+        delay(delayAmount);//sets delay for 2000 ms /2 seconds/
+        indexStepper.step(22);//steps 22 steps counterclockwise
+        delay(delayAmount);//sets delay for 2000 ms /2 seconds/
+        indexStepper.step(15);//steps 15 steps counterclockwise
         delay(delayAmount);
       }
       return true;
@@ -412,7 +402,7 @@ class Pingbot
     Ultrasonic uLeft;
     Ultrasonic uRight;
 
-
+  public:
     // private functions
     void rotate_right() {
       analogWrite(enA, 255);
@@ -427,8 +417,8 @@ class Pingbot
       analogWrite(enD, 255);
       digitalWrite(in7, HIGH);
       digitalWrite(in8, LOW);
-
     }
+    
     void rotate_left() {
       analogWrite(enA, 255);
       digitalWrite(in1, LOW);
@@ -442,8 +432,8 @@ class Pingbot
       analogWrite(enD, 255);
       digitalWrite(in7, LOW);
       digitalWrite(in8, HIGH);
-
     }
+    
     void right () {
       analogWrite(enA, 255);
       digitalWrite(in1, LOW);
@@ -457,8 +447,8 @@ class Pingbot
       analogWrite(enD, 255);
       digitalWrite(in7, HIGH);
       digitalWrite(in8, LOW);
-
     }
+    
     void left() {
       analogWrite(enA, 255);
       analogWrite(enB, 255);
@@ -472,8 +462,8 @@ class Pingbot
       digitalWrite(in6, LOW);
       digitalWrite(in7, LOW);
       digitalWrite(in8, HIGH);
-
     }
+    
     void forward() {
       analogWrite(enA, 255);
       analogWrite(enB, 255);
@@ -487,8 +477,38 @@ class Pingbot
       digitalWrite(in6, LOW);
       digitalWrite(in7, HIGH);
       digitalWrite(in8, LOW);
-
     }
+    
+    void slowForward() {
+      analogWrite(enA, 150);
+      analogWrite(enB, 150);
+      analogWrite(enC, 150);
+      analogWrite(enD, 150);
+      digitalWrite(in1, HIGH);
+      digitalWrite(in2, LOW);
+      digitalWrite(in3, HIGH);
+      digitalWrite(in4, LOW);
+      digitalWrite(in5, HIGH);
+      digitalWrite(in6, LOW);
+      digitalWrite(in7, HIGH);
+      digitalWrite(in8, LOW);
+    }
+    
+    void slowestForward() {
+      analogWrite(enA, 75);
+      analogWrite(enB, 75);
+      analogWrite(enC, 75);
+      analogWrite(enD, 75);
+      digitalWrite(in1, HIGH);
+      digitalWrite(in2, LOW);
+      digitalWrite(in3, HIGH);
+      digitalWrite(in4, LOW);
+      digitalWrite(in5, HIGH);
+      digitalWrite(in6, LOW);
+      digitalWrite(in7, HIGH);
+      digitalWrite(in8, LOW);
+    }
+
     void backward () {
       analogWrite(enA, 255);
       analogWrite(enB, 255);
@@ -502,8 +522,8 @@ class Pingbot
       digitalWrite(in6, HIGH);
       digitalWrite(in7, LOW);
       digitalWrite(in8, HIGH);
-
     }
+    
     void backward_diagonal_right() {
       analogWrite(enA, 255);
       digitalWrite(in1, LOW);
@@ -517,8 +537,8 @@ class Pingbot
       analogWrite(enD, 255);
       digitalWrite(in7, LOW);
       digitalWrite(in8, HIGH);
-
     }
+    
     void backward_diagonal_left() {
       analogWrite(enA, 255);
       digitalWrite(in1, LOW);
@@ -532,8 +552,8 @@ class Pingbot
       analogWrite(enD, 255);
       digitalWrite(in7, LOW);
       digitalWrite(in8, LOW);
-
     }
+    
     void forward_diagonal_left() {
       analogWrite(enA, 255);
       digitalWrite(in1, LOW);
@@ -548,6 +568,7 @@ class Pingbot
       digitalWrite(in7, HIGH);
       digitalWrite(in8, LOW);
     }
+    
     void forward_diagonal_right() {
       analogWrite(enA, 255);
       digitalWrite(in1, HIGH);
@@ -562,8 +583,8 @@ class Pingbot
       digitalWrite(in7, LOW);
       digitalWrite(in8, LOW);
     }
+    
     void off () {
-      //analogWrite(enB, 0);
       digitalWrite(in1, LOW);
       digitalWrite(in2, LOW);
       digitalWrite(in3, LOW);
@@ -577,28 +598,17 @@ class Pingbot
   public:
     Pingbot(byte pin, int suck, int blow, int lev, byte pinA, byte pinB, byte pinC, byte pin1i, byte pin2i, byte pin3i, byte pin4i)
       : myFan(pin, suck, blow, lev,  pinA, pinB, pinC, pin1i, pin2i, pin3i, pin4i), uLeft(trigPinLeft, echoPinLeft), uRight(trigPinRight, echoPinRight)
-    {
-    }
+      
     void setup()
     {
-      pinMode(enA, OUTPUT);
-      pinMode(in1, OUTPUT);
-      pinMode(in2, OUTPUT);
-      pinMode(enB, OUTPUT);
-      pinMode(in3, OUTPUT);
-      pinMode(in4, OUTPUT);
-      pinMode(in5, OUTPUT);
-      pinMode(in6, OUTPUT);
-      pinMode(in7, OUTPUT);
-      pinMode(in8, OUTPUT);
-      pinMode(enC, OUTPUT);
-      pinMode(enD, OUTPUT);
-
       myFan.setup();
       camera.init();
       camera.changeProg("color_connected_components");
-      // signal reciever setup
+
       // ultrasonic sensors setup
+      uLeft.setup();
+      uRight.setup();
+      
       // mobility setup
       pinMode(enA, OUTPUT);
       pinMode(in1, OUTPUT);
@@ -612,9 +622,19 @@ class Pingbot
       pinMode(in8, OUTPUT);
       pinMode(enC, OUTPUT);
       pinMode(enD, OUTPUT);
-
     }
-    bool search()
+
+    int getLeftDist()
+    {
+      return uLeft.getDistance();
+    }
+
+    int getRightDist()
+    {
+      return uRight.getDistance();
+    }
+
+    void search()
     {
       // Find a ball to go towards and orient pingbot so it is facing that ball
       Serial.println("begin search");
@@ -629,16 +649,15 @@ class Pingbot
       while (centerBall(biggest) && aboveBottom(biggest) )  // while ball is above the bottom of the screen and centered horizontally
       {
         Serial.println("forward");
-        forward(); //move forward
-        delay(1000);
+        forward();
+        delay(500);
         off();
       }
-      forward(); // move forward more to run over the ball
-      delay(1000);
-      off();
+      slowForward();
       myFan.suck(); // suck up the ball
-      return true;
+      off();
     }
+    
     int compareBalls()  // determines which ball is the largest and returns its ID number
     {
       int numSeen = camera.ccc.getBlocks();     // number of objects seen
@@ -653,16 +672,12 @@ class Pingbot
           int width = camera.ccc.blocks[obj].m_width; // store width
           int height = camera.ccc.blocks[obj].m_height; // store height
           area[obj] = width * height; // store area
-          if (area[obj] >> maxA)       // if area is largest
+          if (area[obj] > maxA)       // if area is largest
           {
             maxA = area[obj];      // store new max area value
             closestBall = obj;      // store ID of closest ball
           }
         }
-        //     Serial.println("our index ");
-        //   Serial.println(obj);
-        // Serial.println(" pixy index ");
-        // Serial.println(camera.ccc.blocks[obj].m_index);
       }
       return closestBall;         // return ID of closest ball
 
@@ -701,9 +716,12 @@ class Pingbot
 
     bool aboveBottom(int closestBall)
     {
+      int threshold = 200;
       Serial.println(camera.ccc.blocks[closestBall].m_y);
       // camera range is 0 to 208, we want ball above 200
-      if (camera.ccc.blocks[closestBall].m_y < 195)
+
+      int yPos = camera.ccc.blocks[closestBall].m_y;
+      if (yPos < threshold && yPos > 0)
       {
         Serial.println("true");
         return true;   // returns true if ball is at the top
@@ -745,20 +763,20 @@ class Pingbot
           int xHome = camera.ccc.blocks[home].m_x;   // x center of home
           int  yHome = camera.ccc.blocks[home].m_y;   // y center of home
           ///////// center the home ///////
-          while (xHome << 148)        // while home on left
+          while (xHome < 148)        // while home on left
           {
             int time = millis();
-            while ((millis() - time) >> 2000)   // rotate right for 2 s
+            while ((millis() - time) > 2000)   // rotate right for 2 s
             {
               rotate_left();
             }
             off();
           }
 
-          while (xHome >> 168)        // while home on right
+          while (xHome > 168)        // while home on right
           {
             int time = millis();
-            while ((millis() - time) >> 2000)   // rotate for left 2 s
+            while ((millis() - time) > 2000)   // rotate for left 2 s
             {
               rotate_right();
             }
@@ -767,10 +785,10 @@ class Pingbot
 
           ///////// move towards the home ///////
           /// origin is top left of screen, so yHome = 180 indicates home is far?
-          while (yHome << 180)
+          while (yHome < 180)
           {
             int  time = millis();
-            while ((millis() - time) >> 2000)   // move forward 2 s
+            while ((millis() - time) > 2000)   // move forward 2 s
             {
               forward();
             }
@@ -805,34 +823,45 @@ class Pingbot
 
 
 Pingbot pingy(pin, suck, blow, lev, pinA, pinB, pinC, pin1i, pin2i, pin3i, pin4i);
-
+RH_ASK rf_driver;
 
 void setup()
 {
+  rf_driver.init();
+
   Serial.begin(115200);
   pingy.setup();
-
 }
 
 void loop()
 {
-  int command = 0;
-  // command recieved from controller. Command variable is set to 1,2, or 3
+  // Set buffer to size of expected message
+  uint8_t buf[1];
+  uint8_t buflen = sizeof(buf);
+  // Check if received packet is correct size
 
-
-  switch (command)
+  if (rf_driver.recv(buf, &buflen))
   {
-    // 1. Retrieve balls
-    case 1: pingy.search();
-      break;
-    // 2. Dispense a ball
-    case 2: pingy.dispense();
-      break;
-    // 3. Return to home 1
-    case 3: pingy.returnHome(1);
-    // 4. Return to home 2
-    case 4: pingy.returnHome(2);
-      break;
+    switch(buf[0])
+    {
+      case '1':
+        pingy.search();
+        break;
+      case '1':
+        pingy.dispense();
+        break;
+      case '2':
+        pingy.returnHome(1);
+        break;
+      case '3':
+        pingy.returnHome(2);
+        break;
+      case '4':
+        pingy.off();
+        break;
+    }
   }
 
+  delete[] buf;
 }
+
